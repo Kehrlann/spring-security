@@ -28,6 +28,7 @@ import jakarta.servlet.http.HttpSession;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationManagerResolver;
+import org.springframework.security.authentication.AuthenticationServiceException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.context.SecurityContext;
@@ -196,6 +197,9 @@ public class AuthenticationFilter extends OncePerRequestFilter {
 	private void unsuccessfulAuthentication(HttpServletRequest request, HttpServletResponse response,
 			AuthenticationException failed) throws IOException, ServletException {
 		this.securityContextHolderStrategy.clearContext();
+		if (failed instanceof AuthenticationServiceException) {
+			throw failed;
+		}
 		this.failureHandler.onAuthenticationFailure(request, response, failed);
 	}
 

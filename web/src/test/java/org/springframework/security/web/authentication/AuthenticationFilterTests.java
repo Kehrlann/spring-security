@@ -35,6 +35,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationManagerResolver;
+import org.springframework.security.authentication.AuthenticationServiceException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -201,6 +202,25 @@ public class AuthenticationFilterTests {
 		FilterChain chain = mock(FilterChain.class);
 		filter.doFilter(request, response, chain);
 		assertThat(response.getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED.value());
+		assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+	}
+
+	// gh-9429
+	@Test
+	public void filterWhenAuthenticationThrowsAuthenticationServiceExceptionThenRethrows() {
+		givenResolveWillReturnAuthenticationManager();
+		Authentication authentication = new TestingAuthenticationToken("test", "this", "ROLE");
+		AuthenticationServiceException authenticationException = new AuthenticationServiceException("failed");
+		given(this.authenticationConverter.convert(any())).willReturn(authentication);
+		given(this.authenticationManager.authenticate(any())).willThrow(authenticationException);
+		AuthenticationFilter filter = new AuthenticationFilter(this.authenticationManagerResolver,
+				this.authenticationConverter);
+		MockHttpServletRequest request = new MockHttpServletRequest("GET", "/");
+		MockHttpServletResponse response = new MockHttpServletResponse();
+		FilterChain chain = mock(FilterChain.class);
+		assertThatExceptionOfType(AuthenticationServiceException.class)
+				.isThrownBy(() -> filter.doFilter(request, response, chain)).isSameAs(authenticationException);
+		verifyNoMoreInteractions(this.successHandler);
 		assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
 	}
 
