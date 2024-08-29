@@ -17,15 +17,18 @@
 package org.springframework.security.config.annotation.authentication.configuration;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
 import org.springframework.context.ApplicationContext;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.core.log.LogMessage;
+import org.springframework.security.authentication.dao.AbstractUserDetailsAuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.authentication.password.CompromisedPasswordChecker;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
@@ -67,16 +70,6 @@ class InitializeUserDetailsBeanManagerConfigurer extends GlobalAuthenticationCon
 		@Override
 		public void configure(AuthenticationManagerBuilder auth) throws Exception {
 			List<BeanWithName<UserDetailsService>> userDetailsServices = getBeansWithName(UserDetailsService.class);
-			if (auth.isConfigured()) {
-				if (!userDetailsServices.isEmpty()) {
-					this.logger.warn("Global AuthenticationManager configured with an AuthenticationProvider bean. "
-							+ "UserDetailsService beans will not be used for username/password login. "
-							+ "Consider removing the AuthenticationProvider bean. "
-							+ "Alternatively, consider using the UserDetailsService in a manually instantiated "
-							+ "DaoAuthenticationProvider.");
-				}
-				return;
-			}
 
 			if (userDetailsServices.isEmpty()) {
 				return;
@@ -89,8 +82,19 @@ class InitializeUserDetailsBeanManagerConfigurer extends GlobalAuthenticationCon
 						beanNames));
 				return;
 			}
-			UserDetailsService userDetailsService = userDetailsServices.get(0).getBean();
 			String userDetailsServiceBeanName = userDetailsServices.get(0).getName();
+			if (auth.isConfigured()) {
+				if (shouldWarn(userDetailsServiceBeanName)) {
+					this.logger.warn("Global AuthenticationManager configured with an AuthenticationProvider bean. "
+							+ "UserDetailsService beans will not be used for username/password login. "
+							+ "Consider removing the AuthenticationProvider bean. "
+							+ "Alternatively, consider using the UserDetailsService in a manually instantiated "
+							+ "DaoAuthenticationProvider.");
+				}
+				return;
+			}
+
+			UserDetailsService userDetailsService = userDetailsServices.get(0).getBean();
 			PasswordEncoder passwordEncoder = getBeanOrNull(PasswordEncoder.class);
 			UserDetailsPasswordService passwordManager = getBeanOrNull(UserDetailsPasswordService.class);
 			CompromisedPasswordChecker passwordChecker = getBeanOrNull(CompromisedPasswordChecker.class);
@@ -113,6 +117,20 @@ class InitializeUserDetailsBeanManagerConfigurer extends GlobalAuthenticationCon
 			this.logger.info(LogMessage.format(
 					"Global AuthenticationManager configured with UserDetailsService bean with name %s",
 					userDetailsServiceBeanName));
+		}
+
+		private boolean shouldWarn(String userDetailsServiceBeanName) {
+			var authProviderBeans = getBeansWithName(AbstractUserDetailsAuthenticationProvider.class);
+			if (authProviderBeans.isEmpty()) {
+				// this never happens
+				return true;
+			}
+
+			if (InitializeUserDetailsBeanManagerConfigurer.this.context instanceof ConfigurableApplicationContext ctx) {
+				var dependencies = ctx.getBeanFactory().getDependenciesForBean(authProviderBeans.get(0).getName());
+				return !Arrays.asList(dependencies).contains(userDetailsServiceBeanName);
+			}
+			return true;
 		}
 
 		/**
